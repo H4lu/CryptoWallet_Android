@@ -12,12 +12,21 @@ import android.widget.TextView;
 
 import com.example.denis.CryptocurrencyAPI.Bitcoin;
 
+import org.bitcoinj.core.Transaction;
+
 import io.reactivex.schedulers.Schedulers;
 import io.reactivex.android.schedulers.AndroidSchedulers;
 
 public class MainActivity extends AppCompatActivity {
     private  Bitcoin bitcoin;
     public void signClickHandler (android.view.View view) {
+       /* bitcoin.getUTXO()
+                .subscribeOn(Schedulers.io())
+                .observeOn(AndroidSchedulers.mainThread())
+                .map(res -> bitcoin.parseUTXO(res.getData().getTxs()))
+                .map(res -> bitcoin.formTx(12000, "mvLpZMU3cavwLbUMKocpSWcjP9LF62BQMd", res.iterator().next()))
+                .flatMap(res -> bitcoin.getTestSignature(res.hashForSignature(0, res.getInput(0).getScriptBytes(), Transaction.SigHash.ALL, false).toString()));
+                */
         bitcoin.createTransaction("mvLpZMU3cavwLbUMKocpSWcjP9LF62BQMd", 12000);
     }
     public void addressClickHandler(android.view.View view) {
@@ -80,5 +89,10 @@ public class MainActivity extends AppCompatActivity {
         }
 
         return super.onOptionsItemSelected(item);
+    }
+    // needs to be implemented with subscribe destroy
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
     }
 }

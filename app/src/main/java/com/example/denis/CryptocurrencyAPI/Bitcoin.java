@@ -5,6 +5,8 @@ import com.example.denis.POJO.ChainSo.Result;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 
+import io.reactivex.SingleSource;
+import io.reactivex.android.schedulers.AndroidSchedulers;
 import org.bitcoinj.core.Address;
 import org.bitcoinj.core.Coin;
 import org.bitcoinj.core.NetworkParameters;
@@ -15,6 +17,7 @@ import org.bitcoinj.core.UTXO;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 import io.reactivex.Single;
@@ -24,16 +27,25 @@ import okhttp3.logging.HttpLoggingInterceptor;
 import retrofit2.Retrofit;
 import retrofit2.adapter.rxjava2.RxJava2CallAdapterFactory;
 import retrofit2.converter.gson.GsonConverterFactory;
-
+import rx.Observable;
+import rx.Subscriber;
+import org.bitcoinj.params.TestNet3Params;
 import org.bitcoinj.script.Script;
 import org.bitcoinj.script.ScriptBuilder;
 import org.bitcoinj.wallet.CoinSelection;
 import org.bitcoinj.wallet.CoinSelector;
+import org.web3j.crypto.Hash;
+
 import static org.bitcoinj.core.Utils.HEX;
+import static org.bitcoinj.core.Utils.finishMockSleep;
 
 
 public class Bitcoin implements ICryptocurrency {
-
+    private final int FEE = 4013;
+    private final int END_OF_SCRIPT_ASM = 73;
+    private final String NETWORK = "BTCTEST";
+    private final  String BASE_URL = "https://chain.so/api/v2/";
+    private Retrofit retrofit;
     private String address = "";
 
     public void setAddress(String address) {
@@ -44,9 +56,8 @@ public class Bitcoin implements ICryptocurrency {
     public String getAddress_Check() {
         return this.address;
     }
-    private final String NETWORK = "BTCTEST";
-    private final  String BASE_URL = "https://chain.so/api/v2/";
-    private Retrofit retrofit;
+
+
     public Bitcoin() {
         HttpLoggingInterceptor logging = new HttpLoggingInterceptor();
         logging.setLevel(HttpLoggingInterceptor.Level.BODY);
@@ -91,8 +102,11 @@ public class Bitcoin implements ICryptocurrency {
     public double getBalance() {
         return 0;
     }
-    private HashSet<UTXO> parseUTXO() {
-        getUTXO()
+
+    /*
+    private Observable<HashSet<UTXO>> obser = io.reactivex.Observable.create()
+    private Observable<HashSet<UTXO>> parseUTXO = io.reactivex.Observable.create(){
+         getUTXO()
                 .map(res -> res.getData().getTxs())
                 .map(res -> {
                     Set<UTXO> utxos = new HashSet<>();
@@ -101,23 +115,32 @@ public class Bitcoin implements ICryptocurrency {
                            final Sha256Hash utxoHash = Sha256Hash.wrap(tx.getTxid());
                            final int utxoIndex = tx.getOutput_no();
                            final Coin utxoValue = Coin.parseCoin(tx.getValue());
-                           final byte[] test = tx.getScript_asm().getBytes();
-                           System.out.println(test);
-                           final Script utxoScript = new Script("OP_DUP OP_HASH160 0ae4da83696abd6515d3a7d62736d6aa60f1d6c8 OP_EQUALVERIFY".getBytes());
+                           // Cut OP_CHECKSIG
+                           System.out.println(tx.getScript_asm().substring(0, this.END_OF_SCRIPT_ASM));
+                           final Script utxoScript = new Script(tx.getScript_asm().substring(0,this.END_OF_SCRIPT_ASM).getBytes());
                            utxos.add(new UTXO(utxoHash, utxoIndex, utxoValue,  tx.getConfirmations(),false, utxoScript));
                         }
                         return utxos;
-                })
-                .subscribe(utxo -> {
-                    System.out.println("GOT THIS UTXOS");
-                    for (UTXO tx: utxo) {
-                        System.out.println(tx);
-                    }
                 });
-        return null;
     }
+    */
     public Single<LastTx> getUTXO() {
         return this.retrofit.create(IChainSO.class).getUTXO(this.NETWORK, this.address);
+    }
+    public Single<String> getTestSignature(String hex) {
+        Gson gson = new GsonBuilder()
+                .setLenient()
+                .create();
+        System.out.println("GOT THIS HEX " + hex);
+        HttpLoggingInterceptor interceptor = new HttpLoggingInterceptor();
+        interceptor.setLevel(HttpLoggingInterceptor.Level.BODY);
+        OkHttpClient client = new OkHttpClient.Builder().addInterceptor(interceptor).build();
+        Retrofit fit = new Retrofit.Builder().baseUrl("http://10.0.2.2:3000").client(client)
+                .addConverterFactory(GsonConverterFactory.create(gson))
+                .addCallAdapterFactory(RxJava2CallAdapterFactory.create())
+                .build();
+
+        return fit.create(ITestConnect.class).getTestSignature(new BodySign(hex));
     }
     /*OkHttpClient client = new OkHttpClient();
         client.interceptors().add(logging);
@@ -148,7 +171,7 @@ public class Bitcoin implements ICryptocurrency {
         Gson gson = new GsonBuilder().setLenient().create();
         Retrofit fit = new Retrofit.Builder().baseUrl("http://10.0.2.2:3000").client(client)
                 .addConverterFactory(GsonConverterFactory.create(gson))
-                .addCallAdapterFactory(RxJava2CallAdapterFactory.create())
+                .addCallAdapterFactory(RxJava2CallAdapterFactory.createWithScheduler(Schedulers.newThread()))
                 .build();
         return fit.create(ITestConnect.class).getTestAddress();
 
@@ -158,7 +181,12 @@ public class Bitcoin implements ICryptocurrency {
     public void initAddress() {
 
     }
-
+    public static class BodySign {
+        private final String txHex;
+        BodySign(String hex) {
+            this.txHex = hex;
+        }
+    }
     @Override
     public HashMap<String,String> getLastTransactions() {
         return null;
@@ -173,17 +201,50 @@ public class Bitcoin implements ICryptocurrency {
     public void sendTransaction() {
 
     }
+    public HashSet<UTXO> parseUTXO(List<LastTx.Tx> data) {
+
+        HashSet<UTXO> utxos = new HashSet<>();
+        for (LastTx.Tx tx: data) {
+            final Sha256Hash utxoHash = Sha256Hash.wrap(tx.getTxid());
+            final int utxoIndex = tx.getOutput_no();
+            final Coin utxoValue = Coin.parseCoin(tx.getValue());
+            final Script utxoScript = new Script(tx.getScript_asm().substring(0, this.END_OF_SCRIPT_ASM).getBytes());
+            utxos.add(new UTXO(utxoHash, utxoIndex, utxoValue, tx.getConfirmations(), false, utxoScript));
+        }
+        return utxos;
+    }
+    public Transaction formTx(long amount, String paymentAddress, UTXO input) {
+        Transaction tx = new Transaction(TestNet3Params.get());
+        tx.addOutput(Coin.valueOf(amount), Address.fromBase58(TestNet3Params.get(), paymentAddress));
+        // change output
+        tx.addOutput(Coin.valueOf(input.getValue().value - Coin.valueOf(this.FEE).value), Address.fromBase58(NetworkParameters.testNet3(), this.address));
+        tx.addInput(input.getHash(), input.getHeight(), input.getScript());
+        System.out.println("SERIALIZE" + HEX.encode(tx.bitcoinSerialize()));
+        return tx;
+    }
+    /*public static String replaceAt(String input, String search, String replace, int start, int end) {
+           return input.substring(0, start) +
+                  input.substring(start, end).replace(search, replace) +
+                  input.substring(end);
+    }
+    */
     public void createTransaction(String paymentAddress, long amount) {
-        Transaction tx = new Transaction(NetworkParameters.testNet3());
+        /*Transaction tx = new Transaction(NetworkParameters.testNet3());
         tx.addOutput(Coin.valueOf(amount), Address.fromBase58(NetworkParameters.testNet3(), paymentAddress));
         System.out.println("SERIALIZE" + HEX.encode(tx.bitcoinSerialize()));
+        */
         getUTXO()
-                .map(res -> {
-                    parseUTXO();
-                    return res.getData();})
+                .map(res -> parseUTXO(res.getData().getTxs()))
+                .map(res -> res.iterator().next())
+                .map(res -> formTx(amount, paymentAddress, res))
+                .flatMap(res -> {
+                    String sig = getTestSignature(res.hashForSignature(0, res.getInput(0).getScriptBytes(), Transaction.SigHash.ALL, true).toString()).toString();
+                    String transaction = HEX.encode(res.bitcoinSerialize());
+                    transaction.substring(0, 78) + "000000" + sig.toLowerCase() + transaction.indexOf("ffffffff")
+                       return  Single.just(sig); }
+                )
                 .subscribe(res -> {
-
-                    //System.out.println("GOT THIS UTXO" + res);
+                    System.out.println(res);
                 });
 
     }
