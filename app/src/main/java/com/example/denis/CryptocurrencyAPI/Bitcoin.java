@@ -2,6 +2,8 @@ package com.example.denis.CryptocurrencyAPI;
 
 import com.example.denis.POJO.ChainSo.LastTx;
 import com.example.denis.POJO.ChainSo.Result;
+import com.example.denis.POJO.ChainSo.SendTransactionBody;
+import com.example.denis.POJO.ChainSo.TransactionResult;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 
@@ -12,6 +14,7 @@ import org.bitcoinj.core.Coin;
 import org.bitcoinj.core.NetworkParameters;
 import org.bitcoinj.core.Sha256Hash;
 import org.bitcoinj.core.Transaction;
+import org.bitcoinj.core.TransactionInput;
 import org.bitcoinj.core.UTXO;
 
 import java.io.IOException;
@@ -41,7 +44,16 @@ import static org.bitcoinj.core.Utils.finishMockSleep;
 
 
 public class Bitcoin implements ICryptocurrency {
-    private final int FEE = 4013;
+    public Transaction getTransaction() {
+        return transaction;
+    }
+
+    public void setTransaction(Transaction transaction) {
+        this.transaction = transaction;
+    }
+
+    private Transaction transaction;
+    private final int FEE = 20000;
     private final int END_OF_SCRIPT_ASM = 73;
     private final String NETWORK = "BTCTEST";
     private final  String BASE_URL = "https://chain.so/api/v2/";
@@ -97,7 +109,9 @@ public class Bitcoin implements ICryptocurrency {
     public Single<Result> getBalanceAsync() throws IOException {
         return this.retrofit.create(IChainSO.class).getBalance(this.NETWORK, this.address);
     }
-
+    public Single<TransactionResult> sendTx(String body) {
+        return this.retrofit.create(IChainSO.class).sendTransaction(this.NETWORK, new SendTransactionBody(body));
+    }
     @Override
     public double getBalance() {
         return 0;
@@ -165,6 +179,7 @@ public class Bitcoin implements ICryptocurrency {
     */
 
     public Single<String> initAddresss() {
+
         HttpLoggingInterceptor interceptor = new HttpLoggingInterceptor();
         interceptor.setLevel(HttpLoggingInterceptor.Level.BODY);
         OkHttpClient client = new OkHttpClient.Builder().addInterceptor(interceptor).build();
@@ -201,6 +216,7 @@ public class Bitcoin implements ICryptocurrency {
     public void sendTransaction() {
 
     }
+
     public HashSet<UTXO> parseUTXO(List<LastTx.Tx> data) {
 
         HashSet<UTXO> utxos = new HashSet<>();
@@ -214,12 +230,14 @@ public class Bitcoin implements ICryptocurrency {
         return utxos;
     }
     public Transaction formTx(long amount, String paymentAddress, UTXO input) {
+        System.out.println("GOT THIS INPUT" + input.getHash().toString());
         Transaction tx = new Transaction(TestNet3Params.get());
         tx.addOutput(Coin.valueOf(amount), Address.fromBase58(TestNet3Params.get(), paymentAddress));
         // change output
-        tx.addOutput(Coin.valueOf(input.getValue().value - Coin.valueOf(this.FEE).value), Address.fromBase58(NetworkParameters.testNet3(), this.address));
+        tx.addOutput(Coin.valueOf(input.getValue().value - Coin.valueOf(this.FEE).value-Coin.valueOf(amount).value), Address.fromBase58(NetworkParameters.testNet3(), this.address));
         tx.addInput(input.getHash(), input.getHeight(), input.getScript());
         System.out.println("SERIALIZE" + HEX.encode(tx.bitcoinSerialize()));
+        setTransaction(tx);
         return tx;
     }
     /*public static String replaceAt(String input, String search, String replace, int start, int end) {
@@ -237,15 +255,16 @@ public class Bitcoin implements ICryptocurrency {
                 .map(res -> parseUTXO(res.getData().getTxs()))
                 .map(res -> res.iterator().next())
                 .map(res -> formTx(amount, paymentAddress, res))
-                .flatMap(res -> {
-                    String sig = getTestSignature(res.hashForSignature(0, res.getInput(0).getScriptBytes(), Transaction.SigHash.ALL, true).toString()).toString();
-                    String transaction = HEX.encode(res.bitcoinSerialize());
-                    transaction.substring(0, 78) + "000000" + sig.toLowerCase() + transaction.indexOf("ffffffff")
-                       return  Single.just(sig); }
-                )
-                .subscribe(res -> {
-                    System.out.println(res);
-                });
+                .flatMap(res ->  getTestSignature(res.hashForSignature(0, res.getInput(0).getScriptBytes(), Transaction.SigHash.ALL, true).toString()))
+                .map(res -> {
+                    String transaction = HEX.encode(getTransaction().bitcoinSerialize());
+                    //dont know why bitcoinj add`s additional 2 bytes in beginning
+                    String result = transaction.substring(0, 74) + "00000000" + res.toString().toLowerCase() + transaction.substring(transaction.indexOf("ffffffff"), transaction.length());
+                    return result;
+                })
+                .flatMap(res -> sendTx(res))
+                .subscribe();
+
 
     }
 }
