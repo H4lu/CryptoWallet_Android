@@ -7,14 +7,19 @@ import com.example.denis.POJO.ChainSo.TransactionResult;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 
+import junit.framework.Test;
+
 import io.reactivex.SingleSource;
 import io.reactivex.android.schedulers.AndroidSchedulers;
 import org.bitcoinj.core.Address;
+import org.bitcoinj.core.Base58;
 import org.bitcoinj.core.Coin;
 import org.bitcoinj.core.NetworkParameters;
 import org.bitcoinj.core.Sha256Hash;
 import org.bitcoinj.core.Transaction;
 import org.bitcoinj.core.TransactionInput;
+import org.bitcoinj.core.TransactionOutPoint;
+import org.bitcoinj.core.TransactionOutput;
 import org.bitcoinj.core.UTXO;
 
 import java.io.IOException;
@@ -53,7 +58,7 @@ public class Bitcoin implements ICryptocurrency {
     }
 
     private Transaction transaction;
-    private final int FEE = 20000;
+    private final int FEE = 200;
     private final int END_OF_SCRIPT_ASM = 73;
     private final String NETWORK = "BTCTEST";
     private final  String BASE_URL = "https://chain.so/api/v2/";
@@ -145,7 +150,7 @@ public class Bitcoin implements ICryptocurrency {
         Gson gson = new GsonBuilder()
                 .setLenient()
                 .create();
-        System.out.println("GOT THIS HEX " + hex);
+        System.out.println("GOT THIS HASH " + hex);
         HttpLoggingInterceptor interceptor = new HttpLoggingInterceptor();
         interceptor.setLevel(HttpLoggingInterceptor.Level.BODY);
         OkHttpClient client = new OkHttpClient.Builder().addInterceptor(interceptor).build();
@@ -224,28 +229,42 @@ public class Bitcoin implements ICryptocurrency {
             final Sha256Hash utxoHash = Sha256Hash.wrap(tx.getTxid());
             final int utxoIndex = tx.getOutput_no();
             final Coin utxoValue = Coin.parseCoin(tx.getValue());
+            System.out.println(Base58.encode("0ae4da83696abd6515d3a7d62736d6aa60f1d6c8".getBytes()));
+            // final Script utxoScript = new Script(tx.getScript_hex().getBytes());
             final Script utxoScript = new Script(tx.getScript_asm().substring(0, this.END_OF_SCRIPT_ASM).getBytes());
-            utxos.add(new UTXO(utxoHash, utxoIndex, utxoValue, tx.getConfirmations(), false, utxoScript));
+            // final Script utxoScript = new Script("76a9140ae4da83696abd6515d3a7d62736d6aa60f1d6c888ac".getBytes());
+            utxos.add(new UTXO(utxoHash, utxoIndex, utxoValue, tx.getConfirmations(), false, ScriptBuilder.createOutputScript(Address.fromBase58(TestNet3Params.get(), this.address))));
         }
         return utxos;
     }
+
     public Transaction formTx(long amount, String paymentAddress, UTXO input) {
         System.out.println("GOT THIS INPUT" + input.getHash().toString());
         Transaction tx = new Transaction(TestNet3Params.get());
         tx.addOutput(Coin.valueOf(amount), Address.fromBase58(TestNet3Params.get(), paymentAddress));
         // change output
-        tx.addOutput(Coin.valueOf(input.getValue().value - Coin.valueOf(this.FEE).value-Coin.valueOf(amount).value), Address.fromBase58(NetworkParameters.testNet3(), this.address));
-        tx.addInput(input.getHash(), input.getHeight(), input.getScript());
-        System.out.println("SERIALIZE" + HEX.encode(tx.bitcoinSerialize()));
+        tx.addOutput(Coin.valueOf(input.getValue().value - Transaction.REFERENCE_DEFAULT_MIN_TX_FEE.value-Coin.valueOf(amount).value), Address.fromBase58(TestNet3Params.get(), this.address));
+        System.out.println("BEFORE THIS " + HEX.encode(tx.bitcoinSerialize()));
+        tx.addInput(input.getHash(), 0, input.getScript());
+        //tx.addInput(new TransactionOutput(TestNet3Params.get(), null, input.getScript().getProgram(),input.getScript().getProgram().length));
+        System.out.println("SETTING THIS SCRIPT " + HEX.encode(input.getScript().getProgram()).toString());
+        System.out.println("SERIALIZE" + HEX.encode(tx.unsafeBitcoinSerialize()));
+        System.out.println(HEX.encode(ScriptBuilder.createOutputScript(Address.fromBase58(TestNet3Params.get(), this.address)).getProgram()));
         setTransaction(tx);
         return tx;
     }
+
     /*public static String replaceAt(String input, String search, String replace, int start, int end) {
            return input.substring(0, start) +
                   input.substring(start, end).replace(search, replace) +
                   input.substring(end);
     }
     */
+    public String getHashForSig(Transaction transaction) {
+        String tempTx = HEX.encode(transaction.bitcoinSerialize());
+        String txForSig = tempTx.substring(0, 74);
+        return "";
+    }
     public void createTransaction(String paymentAddress, long amount) {
         /*Transaction tx = new Transaction(NetworkParameters.testNet3());
         tx.addOutput(Coin.valueOf(amount), Address.fromBase58(NetworkParameters.testNet3(), paymentAddress));
@@ -255,9 +274,11 @@ public class Bitcoin implements ICryptocurrency {
                 .map(res -> parseUTXO(res.getData().getTxs()))
                 .map(res -> res.iterator().next())
                 .map(res -> formTx(amount, paymentAddress, res))
-                .flatMap(res ->  getTestSignature(res.hashForSignature(0, res.getInput(0).getScriptBytes(), Transaction.SigHash.ALL, true).toString()))
+                .flatMap(res -> getTestSignature(res.hashForSignature(0, res.getInput(0).getScriptSig().getProgram(), Transaction.SigHash.ALL, false).toString()))
                 .map(res -> {
                     String transaction = HEX.encode(getTransaction().bitcoinSerialize());
+                   // System.out.println(HEX.encode(getTransaction().getInput(0).getScriptSig().getPubKeyHash()));
+
                     //dont know why bitcoinj add`s additional 2 bytes in beginning
                     String result = transaction.substring(0, 74) + "00000000" + res.toString().toLowerCase() + transaction.substring(transaction.indexOf("ffffffff"), transaction.length());
                     return result;

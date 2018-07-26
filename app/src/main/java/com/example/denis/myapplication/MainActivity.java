@@ -27,7 +27,7 @@ public class MainActivity extends AppCompatActivity {
                 .map(res -> bitcoin.formTx(12000, "mvLpZMU3cavwLbUMKocpSWcjP9LF62BQMd", res.iterator().next()))
                 .flatMap(res -> bitcoin.getTestSignature(res.hashForSignature(0, res.getInput(0).getScriptBytes(), Transaction.SigHash.ALL, false).toString()));
                 */
-        bitcoin.createTransaction("mvLpZMU3cavwLbUMKocpSWcjP9LF62BQMd", 12000);
+        bitcoin.createTransaction("mvLpZMU3cavwLbUMKocpSWcjP9LF62BQMd", 10);
     }
     public void addressClickHandler(android.view.View view) {
         TextView text = ((TextView)findViewById(R.id.nested_contain_main).findViewById(R.id.textId));
