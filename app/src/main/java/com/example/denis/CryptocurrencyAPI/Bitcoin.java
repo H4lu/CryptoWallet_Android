@@ -82,7 +82,7 @@ public class Bitcoin implements ICryptocurrency {
         OkHttpClient okHttpClient = new OkHttpClient.Builder().addInterceptor(logging).build();
          retrofit = new Retrofit.Builder().baseUrl(this.BASE_URL).client(okHttpClient)
                  .addConverterFactory(GsonConverterFactory.create(gson))
-                 .addCallAdapterFactory(RxJava2CallAdapterFactory.createWithScheduler(Schedulers.newThread()))
+                 .addCallAdapterFactory(RxJava2CallAdapterFactory.createWithScheduler(Schedulers.io()))
                 .build();
     }
 
@@ -184,17 +184,15 @@ public class Bitcoin implements ICryptocurrency {
     */
 
     public Single<String> initAddresss() {
-
         HttpLoggingInterceptor interceptor = new HttpLoggingInterceptor();
         interceptor.setLevel(HttpLoggingInterceptor.Level.BODY);
         OkHttpClient client = new OkHttpClient.Builder().addInterceptor(interceptor).build();
         Gson gson = new GsonBuilder().setLenient().create();
         Retrofit fit = new Retrofit.Builder().baseUrl("http://10.0.2.2:3000").client(client)
                 .addConverterFactory(GsonConverterFactory.create(gson))
-                .addCallAdapterFactory(RxJava2CallAdapterFactory.createWithScheduler(Schedulers.newThread()))
+                .addCallAdapterFactory(RxJava2CallAdapterFactory.createWithScheduler(Schedulers.io()))
                 .build();
         return fit.create(ITestConnect.class).getTestAddress();
-
     }
 
     @Override
