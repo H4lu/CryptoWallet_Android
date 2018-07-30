@@ -15,7 +15,9 @@ import com.example.denis.CryptocurrencyAPI.Ethereum;
 
 import org.bitcoinj.core.Transaction;
 import org.spongycastle.util.encoders.Hex;
+import org.web3j.crypto.ECKeyPair;
 import org.web3j.crypto.Hash;
+import org.web3j.crypto.Keys;
 import org.web3j.crypto.RawTransaction;
 import org.web3j.crypto.Sign;
 import org.web3j.crypto.TransactionEncoder;
@@ -54,20 +56,23 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void signETHClick (android.view.View view) {
-        ethereum.createTransaction("0x619B30BE614ce453035058736cd2B83c34373Ddd", "0.00002")
-                .map(rawTransaction -> Hash.sha3(TransactionEncoder.encode(rawTransaction).toString()))
+        ethereum.createTransaction("0x033baF5BEdc9fFbf2190C800bfd17e073Bf79D18", "0.00003")
+                .map(rawTransaction -> ethereum.getHash(rawTransaction))
                 .flatMap(hash -> ethereum.signTx(hash))
                 .flatMap(signature -> {
-                    System.out.println("SIGNATURE TO STRIGN " + signature.toString());
-                    byte [] signatureBytes = Numeric.hexStringToByteArray(signature.toString());
-                    byte [] num = Numeric.hexStringToByteArray(signature.toString());
+                    System.out.println("SIGNATURE TO STRIGN " + signature);
+                    byte [] signatureBytes = Numeric.hexStringToByteArray(signature);
+                    byte [] num = Numeric.hexStringToByteArray(signature);
+                   // ECKeyPair keyPair = Keys.deserialize(Hex.decode("0xA25E84B8B28314172100B755CF81EE7A116878F4037B325D1ADEACE1C177F174"));
                     Sign.SignatureData signatureData = new Sign.SignatureData(signatureBytes[64],
                             Arrays.copyOfRange(signatureBytes,0,32), Arrays.copyOfRange(signatureBytes,32,64));
                     List<RlpType> values = ethereum.asRlpValues(ethereum.getRawTransaction(), TransactionEncoder.createEip155SignatureData(signatureData, (byte) 3));
                     RlpList rlpList = new RlpList(values);
                     System.out.println("ENCODED TRANSACTION " + Hex.toHexString(RlpEncoder.encode(rlpList)));
+                    System.out.println("ENCODED " + Hex.encode(RlpEncoder.encode(rlpList)));
                     return ethereum.sendETHTransaction(Hex.toHexString(RlpEncoder.encode(rlpList)));
                  })
+                .doOnError(System.out::println)
                 //.flatMap(txHex -> ethereum.sendETHTransaction(txHex.toString()))
                 .subscribeOn(Schedulers.io())
                 .observeOn(rx.android.schedulers.AndroidSchedulers.mainThread())

@@ -4,7 +4,10 @@ package com.example.denis.CryptocurrencyAPI;
 import com.example.denis.POJO.ChainSo.Result;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.subgraph.orchid.encoders.Hex;
 
+import org.web3j.crypto.Credentials;
+import org.web3j.crypto.ECKeyPair;
 import org.web3j.crypto.Hash;
 import org.web3j.crypto.Keys;
 import org.web3j.crypto.RawTransaction;
@@ -22,10 +25,12 @@ import org.web3j.protocol.core.methods.response.EthSendTransaction;
 import org.web3j.protocol.http.HttpService;
 import org.web3j.rlp.RlpString;
 import org.web3j.rlp.RlpType;
+import org.web3j.tx.RawTransactionManager;
 import org.web3j.utils.Bytes;
 import org.web3j.utils.Convert;
 import org.web3j.utils.Numeric;
 
+import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.ArrayList;
@@ -52,7 +57,7 @@ public class Ethereum implements ICryptocurrency {
     private Web3j web3j;
     private Retrofit retrofit;
     private RawTransaction rawTransaction;
-
+    private byte[] testKey = Hex.decode("A25E84B8B28314172100B755CF81EE7A116878F4037B325D1ADEACE1C177F174");
     public RawTransaction getRawTransaction() {
         return rawTransaction;
     }
@@ -99,31 +104,48 @@ public class Ethereum implements ICryptocurrency {
         return request.observable();
     }
 
+    public String getHash(RawTransaction rawTransaction) {
+        byte [] hash = Hash.sha3(TransactionEncoder.encode(rawTransaction, (byte) 3));
+        return Numeric.toHexString(hash);
+    }
+
     public Observable<EthSendTransaction> sendETHTransaction(String txHex) {
         System.out.println("GOT THIS HEX TO SEND " + txHex);
         return this.web3j.ethSendRawTransaction("0x" + txHex).observable();
     }
 
     public Observable<RawTransaction> createTransaction(String paymentAddress, String amount) {
-        return getNonce()
-                .map(nonce -> {
-                    RawTransaction transaction = RawTransaction.createEtherTransaction(nonce.getTransactionCount(), Convert.toWei("10", Convert.Unit.GWEI).toBigInteger(),
-                        new BigInteger("21000"),paymentAddress, Convert.toWei(amount, Convert.Unit.ETHER).toBigInteger());
-                    setRawTransaction(transaction);
-                    return transaction;
-                });
+            return getNonce()
+                    .map(nonce -> {
+                        System.out.println("NONCE " + nonce.getTransactionCount());
+                        RawTransaction transaction = RawTransaction.createEtherTransaction(nonce.getTransactionCount(), Convert.toWei("10", Convert.Unit.GWEI).toBigInteger(),
+                                new BigInteger("21000"), paymentAddress, Convert.toWei(amount, Convert.Unit.ETHER).toBigInteger());
+                        setRawTransaction(transaction);
+                       // ECKeyPair ecKeyPair = new ECKeyPair(new BigInteger("F4A4CC6890E11FE3089E5E7CD4E76EE0AE37D6C348811703443B3623801F8534"), new BigInteger("029D591D0E636D104DCB0D16CA84ECACDEC748F0BDC96B4ADB0A16809CDD77A000"));
+                        byte[] signedMessage = TransactionEncoder.signMessage(rawTransaction, (byte) 3,Credentials.create("0xF4A4CC6890E11FE3089E5E7CD4E76EE0AE37D6C348811703443B3623801F8534"));
+                        String hexValue = Numeric.toHexString(signedMessage);
+                        System.out.println("HEX VALUE " + hexValue);
+                        /*this.web3j.ethSendRawTransaction(hexValue).observable()
+                                    .subscribeOn(rx.schedulers.Schedulers.io())
+                                    .observeOn(rx.android.schedulers.AndroidSchedulers.mainThread())
+                                    .subscribe(res -> System.out.println("RESPONSE OF SEND TX " + res.getRawResponse()));
+                        */
+                        return transaction;
+
+                    });
+
                 //.map(rawTransaction -> Hash.sha3(TransactionEncoder.encode(rawTransaction)).toString())
                 //.flatMap(hash -> signTx(hash));
     }
 
     public Observable createSignedTransaction(String signature, String paymentAddress, String amount) {
         byte [] sign = signature.getBytes();
+
         return getNonce()
                 .map(nonce -> RawTransaction.createEtherTransaction(nonce.getTransactionCount(), Convert.toWei("10", Convert.Unit.GWEI).toBigInteger(),
                         new BigInteger("21000"),paymentAddress, Convert.toWei(amount, Convert.Unit.ETHER).toBigInteger()));
     }
-
-    public Observable signTx(String hash) {
+    public Observable<String> signTx(String hash) {
         HttpLoggingInterceptor interceptor = new HttpLoggingInterceptor();
         interceptor.setLevel(HttpLoggingInterceptor.Level.BODY);
         OkHttpClient client = new OkHttpClient.Builder().addInterceptor(interceptor).build();
@@ -132,7 +154,7 @@ public class Ethereum implements ICryptocurrency {
                 .addConverterFactory(GsonConverterFactory.create(gson))
                 .addCallAdapterFactory(RxJavaCallAdapterFactory.createWithScheduler(rx.schedulers.Schedulers.io()))
                 .build();
-        return fit.create(ITestConnect.class).getETHSignature(new Bitcoin.BodySign(hash));
+        return fit.create(ITestConnect.class).getETHSignature(new Bitcoin.BodySign(hash.substring(2)));
     }
 
     private Observable<EthGetTransactionCount> getNonce() {
