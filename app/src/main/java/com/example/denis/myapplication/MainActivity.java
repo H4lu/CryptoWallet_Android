@@ -86,20 +86,29 @@ public class MainActivity extends AppCompatActivity {
                 .map(res -> bitcoin.formTx(12000, "mvLpZMU3cavwLbUMKocpSWcjP9LF62BQMd", res.iterator().next()))
                 .flatMap(res -> bitcoin.getTestSignature(res.hashForSignature(0, res.getInput(0).getScriptBytes(), Transaction.SigHash.ALL, false).toString()));
                 */
-        bitcoin.createTransaction("mvLpZMU3cavwLbUMKocpSWcjP9LF62BQMd", 10);
+        bitcoin.createTransaction("mvLpZMU3cavwLbUMKocpSWcjP9LF62BQMd", 100000000);
     }
+
+    public void addressLTCClick(android.view.View view) {
+
+    }
+
+    public void signLTCClick(android.view.View view) {
+
+    }
+
     public void addressClickHandler(android.view.View view) {
         TextView text = ((TextView)findViewById(R.id.nested_contain_main).findViewById(R.id.textId));
 
         try {
             //text.setText("Balance called");
             bitcoin.initAddresss()
-                    .subscribeOn(io.reactivex.schedulers.Schedulers.io())
-                    .observeOn(io.reactivex.android.schedulers.AndroidSchedulers.mainThread())
-                    .doOnSuccess((res) -> bitcoin.setAddress(res))
-                    .flatMap((res) -> bitcoin.getBalanceAsync())
+                    .doOnSuccess(bitcoin::setAddress)
+                    .flatMap(res -> bitcoin.getBalanceAsync())
                     .map(result -> result.getData().getConfirmed_balance())
                     //.flatMap(res -> bitcoin.getBalanceAsync())
+                    .subscribeOn(io.reactivex.schedulers.Schedulers.io())
+                    .observeOn(io.reactivex.android.schedulers.AndroidSchedulers.mainThread())
                     .subscribe(result -> {
                         System.out.println("GOT CONFIRMED BALANCE " + result);
                         System.out.println("ADDRESS CHECK " + bitcoin.getAddress_Check());
@@ -119,13 +128,15 @@ public class MainActivity extends AppCompatActivity {
         this.bitcoin = new Bitcoin();
         this.ethereum = new Ethereum();
         FloatingActionButton fab = (FloatingActionButton) findViewById(R.id.fab);
-        fab.setOnClickListener(new View.OnClickListener() {
+        /*fab.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
                 Snackbar.make(view, "Replace with your own action", Snackbar.LENGTH_LONG)
                         .setAction("Action", null).show();
             }
-        });
+        });*/
+        fab.setOnClickListener(view-> Snackbar.make(view, "Replace with your own action", Snackbar.LENGTH_LONG)
+                .setAction("Action", null).show());
 
     }
 

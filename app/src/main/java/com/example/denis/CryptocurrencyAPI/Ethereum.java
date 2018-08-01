@@ -6,6 +6,7 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.subgraph.orchid.encoders.Hex;
 
+
 import org.web3j.crypto.Credentials;
 import org.web3j.crypto.ECKeyPair;
 import org.web3j.crypto.Hash;
@@ -125,11 +126,6 @@ public class Ethereum implements ICryptocurrency {
                         byte[] signedMessage = TransactionEncoder.signMessage(rawTransaction, (byte) 3,Credentials.create("0xF4A4CC6890E11FE3089E5E7CD4E76EE0AE37D6C348811703443B3623801F8534"));
                         String hexValue = Numeric.toHexString(signedMessage);
                         System.out.println("HEX VALUE " + hexValue);
-                        /*this.web3j.ethSendRawTransaction(hexValue).observable()
-                                    .subscribeOn(rx.schedulers.Schedulers.io())
-                                    .observeOn(rx.android.schedulers.AndroidSchedulers.mainThread())
-                                    .subscribe(res -> System.out.println("RESPONSE OF SEND TX " + res.getRawResponse()));
-                        */
                         return transaction;
 
                     });
@@ -145,6 +141,7 @@ public class Ethereum implements ICryptocurrency {
                 .map(nonce -> RawTransaction.createEtherTransaction(nonce.getTransactionCount(), Convert.toWei("10", Convert.Unit.GWEI).toBigInteger(),
                         new BigInteger("21000"),paymentAddress, Convert.toWei(amount, Convert.Unit.ETHER).toBigInteger()));
     }
+
     public Observable<String> signTx(String hash) {
         HttpLoggingInterceptor interceptor = new HttpLoggingInterceptor();
         interceptor.setLevel(HttpLoggingInterceptor.Level.BODY);

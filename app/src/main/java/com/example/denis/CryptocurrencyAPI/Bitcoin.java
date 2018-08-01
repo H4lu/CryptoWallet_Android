@@ -35,8 +35,7 @@ import okhttp3.logging.HttpLoggingInterceptor;
 import retrofit2.Retrofit;
 import retrofit2.adapter.rxjava2.RxJava2CallAdapterFactory;
 import retrofit2.converter.gson.GsonConverterFactory;
-import rx.Observable;
-import rx.Subscriber;
+import io.reactivex.Observable;
 import org.bitcoinj.params.TestNet3Params;
 import org.bitcoinj.script.Script;
 import org.bitcoinj.script.ScriptBuilder;
@@ -56,7 +55,7 @@ public class Bitcoin implements ICryptocurrency {
     public void setTransaction(Transaction transaction) {
         this.transaction = transaction;
     }
-
+    private NetworkParameters networkParameters = TestNet3Params.get();
     private Transaction transaction;
     private final int FEE = 200;
     private final int END_OF_SCRIPT_ASM = 73;
@@ -110,13 +109,16 @@ public class Bitcoin implements ICryptocurrency {
         });
 */
     }
+
     @Override
     public Single<Result> getBalanceAsync() throws IOException {
         return this.retrofit.create(IChainSO.class).getBalance(this.NETWORK, this.address);
     }
+
     public Single<TransactionResult> sendTx(String body) {
         return this.retrofit.create(IChainSO.class).sendTransaction(this.NETWORK, new SendTransactionBody(body));
     }
+
     @Override
     public double getBalance() {
         return 0;
@@ -143,14 +145,16 @@ public class Bitcoin implements ICryptocurrency {
                 });
     }
     */
+
     public Single<LastTx> getUTXO() {
         return this.retrofit.create(IChainSO.class).getUTXO(this.NETWORK, this.address);
     }
-    public Single<String> getTestSignature(String hex) {
+
+    public Observable<String> getTestSignature(String hash) {
         Gson gson = new GsonBuilder()
                 .setLenient()
                 .create();
-        System.out.println("GOT THIS HASH " + hex);
+        //System.out.println("GOT THIS HASH " + hex);
         HttpLoggingInterceptor interceptor = new HttpLoggingInterceptor();
         interceptor.setLevel(HttpLoggingInterceptor.Level.BODY);
         OkHttpClient client = new OkHttpClient.Builder().addInterceptor(interceptor).build();
@@ -159,7 +163,7 @@ public class Bitcoin implements ICryptocurrency {
                 .addCallAdapterFactory(RxJava2CallAdapterFactory.create())
                 .build();
 
-        return fit.create(ITestConnect.class).getTestSignature(new BodySign(hex));
+        return fit.create(ITestConnect.class).getTestSignature(new BodySign(hash));
     }
     /*OkHttpClient client = new OkHttpClient();
         client.interceptors().add(logging);
@@ -221,7 +225,6 @@ public class Bitcoin implements ICryptocurrency {
     }
 
     public HashSet<UTXO> parseUTXO(List<LastTx.Tx> data) {
-
         HashSet<UTXO> utxos = new HashSet<>();
         for (LastTx.Tx tx: data) {
             final Sha256Hash utxoHash = Sha256Hash.wrap(tx.getTxid());
@@ -236,19 +239,36 @@ public class Bitcoin implements ICryptocurrency {
         return utxos;
     }
 
-    public Transaction formTx(long amount, String paymentAddress, UTXO input) {
-        System.out.println("GOT THIS INPUT" + input.getHash().toString());
-        Transaction tx = new Transaction(TestNet3Params.get());
-        tx.addOutput(Coin.valueOf(amount), Address.fromBase58(TestNet3Params.get(), paymentAddress));
+
+    public Transaction formTx(long amount, String paymentAddress, HashSet<UTXO> input) {
+        Transaction tx = new Transaction(this.networkParameters);
+        long transactionValue = 0;
+        for (UTXO transaction: input) {
+            System.out.println("ADD THIS TRANSACTION " + transaction.getHash() + " WITH THIS INDEX " + transaction.getIndex());
+            tx.addInput(transaction.getHash(), transaction.getIndex(), transaction.getScript());
+            transactionValue+=transaction.getValue().value;
+        }
+
+       tx.addOutput(Coin.valueOf(amount), Address.fromBase58(this.networkParameters, paymentAddress));
+      //  tx.addOutput(Coin.valueOf(amount), Address.fromBase58(LitecoinNetwork.get(), "LZCofQ8vpu2VR42FW3LueB48ZnZZaQU8ao"));
+        if (transactionValue - amount - Transaction.DEFAULT_TX_FEE.value > Transaction.MIN_NONDUST_OUTPUT.value) {
+            tx.addOutput(Coin.valueOf(transactionValue - amount - Transaction.DEFAULT_TX_FEE.value),
+                        Address.fromBase58(this.networkParameters, this.address));
+        }
+
+        ;
         // change output
-        tx.addOutput(Coin.valueOf(input.getValue().value - Transaction.REFERENCE_DEFAULT_MIN_TX_FEE.value-Coin.valueOf(amount).value), Address.fromBase58(TestNet3Params.get(), this.address));
+        /*tx.addOutput(Coin.valueOf(input.getValue().value - Transaction.REFERENCE_DEFAULT_MIN_TX_FEE.value-Coin.valueOf(amount).value),
+                Address.fromBase58(TestNet3Params.get(), this.address));
         System.out.println("BEFORE THIS " + HEX.encode(tx.bitcoinSerialize()));
-        tx.addInput(input.getHash(), 0, input.getScript());
+        */
+        //tx.addInput(input.getHash(), 0, input.getScript());
         //tx.addInput(new TransactionOutput(TestNet3Params.get(), null, input.getScript().getProgram(),input.getScript().getProgram().length));
-        System.out.println("SETTING THIS SCRIPT " + HEX.encode(input.getScript().getProgram()).toString());
-        System.out.println("SERIALIZE" + HEX.encode(tx.unsafeBitcoinSerialize()));
-        System.out.println(HEX.encode(ScriptBuilder.createOutputScript(Address.fromBase58(TestNet3Params.get(), this.address)).getProgram()));
+        //System.out.println("SETTING THIS SCRIPT " + HEX.encode(input.getScript().getProgram()).toString());
+        //System.out.println("SERIALIZE" + HEX.encode(tx.unsafeBitcoinSerialize()));
+        //System.out.println(HEX.encode(ScriptBuilder.createOutputScript(Address.fromBase58(TestNet3Params.get(), this.address)).getProgram()));
         setTransaction(tx);
+        tx.getInputs().size();
         return tx;
     }
 
@@ -258,11 +278,61 @@ public class Bitcoin implements ICryptocurrency {
                   input.substring(end);
     }
     */
+
+    public HashSet<UTXO> chooseUTXONaive(HashSet<UTXO> transactions, long amount) {
+        long temp = 0;
+        HashSet<UTXO> newSet = new HashSet<UTXO>();
+        for (UTXO transaction : transactions) {
+            long transactionValue = transaction.getValue().value;
+            temp += transactionValue;
+	        System.out.println("ADD THIS INPUT " + transaction.getHash().toString());
+            newSet.add(transaction);
+            if (temp >= amount + Transaction.DEFAULT_TX_FEE.value) break;
+        }
+        return newSet;
+    }
+
     public String getHashForSig(Transaction transaction) {
         String tempTx = HEX.encode(transaction.bitcoinSerialize());
         String txForSig = tempTx.substring(0, 74);
         return "";
     }
+
+    public Single<List<String>> sign(int size) {
+       return Observable.range(0, size).concatMap(index -> getTestSignature(getTransaction()
+        .hashForSignature(index, getTransaction().getInput(index.longValue()).getScriptSig().getProgram(), Transaction.SigHash.ALL, false)
+                .toString())
+        ).toList();
+    }
+   /* public void test(List<String> list) {
+        Observable.fromIterable(list)
+                .concatMap()
+    }
+*/  private Single<String> print(List<String> list) {
+        System.out.println(list);
+        return Single.just("");
+    }
+
+    private Single<String> formSignedTransaction(List<String> signatures) {
+        String tx = HEX.encode(getTransaction().bitcoinSerialize());
+        System.out.println("UNBUILDED " + tx);
+        for (int i = 0;i<signatures.size(); i++) {
+            String signature = signatures.get(i);
+            final int firstIndex = tx.indexOf("0000001976");
+            final int lastIndex = tx.substring(firstIndex).indexOf("ffffffff");
+            tx = tx.substring(0, firstIndex) + "000000" + signature.toLowerCase() + tx.substring(firstIndex).substring(lastIndex, tx.length() - firstIndex);
+            System.out.println("TEMP RESULT " + tx);
+        }
+       // getTransaction().getInput(s)
+        /*for (String signature: signatures) {
+            tx = tx.substring(0,76) + "000000" + signature.toLowerCase() + tx.substring(tx.indexOf("ffffffff"), tx.length());
+            System.out.println("TEMP RESULT " + tx);
+        }*/
+        System.out.println("FINALLY " + tx);
+        // System.out.println("SERIALIZED " + HEX.encode(tx.bitcoinSerialize()));
+        return Single.just(tx);
+    }
+
     public void createTransaction(String paymentAddress, long amount) {
         /*Transaction tx = new Transaction(NetworkParameters.testNet3());
         tx.addOutput(Coin.valueOf(amount), Address.fromBase58(NetworkParameters.testNet3(), paymentAddress));
@@ -270,9 +340,51 @@ public class Bitcoin implements ICryptocurrency {
         */
         getUTXO()
                 .map(res -> parseUTXO(res.getData().getTxs()))
-                .map(res -> res.iterator().next())
+                .map(res -> chooseUTXONaive(res, amount))
                 .map(res -> formTx(amount, paymentAddress, res))
-                .flatMap(res -> getTestSignature(res.hashForSignature(0, res.getInput(0).getScriptSig().getProgram(), Transaction.SigHash.ALL, false).toString()))
+                .flatMap(tx -> sign(tx.getInputs().size()))
+                .flatMap(res -> formSignedTransaction(res))
+                .doOnError(System.out::println)
+                .flatMap(this::sendTx)
+                /*.flatMap(tx -> Observable.range(0,tx.getInputs().size()).map(index  -> getTestSignature(
+                        getTransaction().hashForSignature(
+                                index,
+                                getTransaction().getInput(index.longValue()).getScriptSig().getProgram(),
+                                Transaction.SigHash.ALL,
+                                false)
+                                .toString()
+                )))
+                */
+                /*.map(index -> getTestSignature(
+                        getTransaction().hashForSignature(
+                                index.blockingFirst().intValue(),
+                                getTransaction().getInput(index.blockingFirst().longValue()).getScriptSig().getProgram(),
+                                Transaction.SigHash.ALL,
+                                false)
+                                .toString()
+                        )
+                ).toObservable().toList().doOnSuccess(res -> System.out.println(res))
+               /* .map(tx -> Observable.range(0, tx.getInputs().size())
+                                      .flatMap(index -> getTestSignature(getTransaction().hashForSignature(index,
+                                                getTransaction().getInput(index).getScriptSig().getProgram(),
+                                                Transaction.SigHash.ALL,
+                                                false).toString()))
+                                      .toList())
+
+               // .flatMap(index -> getTestSignature(getTransaction().hashForSignature(index,
+                                                   // getTransaction().getInput()))
+
+                       /* .flatMapIterable(index ->
+                            getTestSignature(getTransaction().hashForSignature(index,
+                                                                getTransaction().getInput(index).getScriptSig().getProgram(),
+                                                                Transaction.SigHash.ALL,
+                                                                    false)
+                                             .toString()
+                        )
+                        ))
+                        */
+                //.flatMap(res -> getTestSignature(res.hashForSignature(0, res.getInput(0).getScriptSig().getProgram(), Transaction.SigHash.ALL, false).toString()))
+                /*
                 .map(res -> {
                     String transaction = HEX.encode(getTransaction().bitcoinSerialize());
                    // System.out.println(HEX.encode(getTransaction().getInput(0).getScriptSig().getPubKeyHash()));
@@ -282,8 +394,9 @@ public class Bitcoin implements ICryptocurrency {
                     return result;
                 })
                 .flatMap(res -> sendTx(res))
+                */
+                .subscribeOn(Schedulers.io())
+                .observeOn(AndroidSchedulers.mainThread())
                 .subscribe();
-
-
     }
 }

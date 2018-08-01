@@ -22,7 +22,7 @@ public interface ITestConnect {
     rx.Observable<String> getETHAddress();
 
     @POST("/sign")
-    Single<String> getTestSignature(@Body Bitcoin.BodySign txHash);
+    io.reactivex.Observable<String> getTestSignature(@Body Bitcoin.BodySign txHash);
 
     @POST("/sign1")
     rx.Observable<String> getETHSignature(@Body Bitcoin.BodySign txHash);

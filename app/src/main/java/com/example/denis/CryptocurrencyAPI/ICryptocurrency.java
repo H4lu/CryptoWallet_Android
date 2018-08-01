@@ -6,9 +6,9 @@ import java.util.HashMap;
 
 import io.reactivex.Single;
 
-public interface ICryptocurrency {
+public interface ICryptocurrency<T> {
     double getBalance() throws Exception;
-    Single<Result> getBalanceAsync() throws Exception;
+    Single<T> getBalanceAsync() throws Exception;
     void sendTransaction();
     String getAddress();
     void initAddress();
